@@ -15,7 +15,7 @@ import requests
 from functools import lru_cache
 
 from django.http import JsonResponse
-
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 
@@ -1111,18 +1111,12 @@ def route_score(route):
 # ---------------- HOME ENDPOINT ----------------
 
 
-
 @ensure_csrf_cookie
-
 def home(request):
-
     return JsonResponse({
-
-        "message": "Truck Routing API is working!"
-
+        "message": "Truck Routing API is working!",
+        "csrfToken": get_token(request),
     })
-
-
 
 
 
