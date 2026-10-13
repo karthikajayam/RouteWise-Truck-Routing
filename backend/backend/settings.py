@@ -128,11 +128,16 @@ MAILERS = {
 
 
 # Frontend / backend communication
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,"
+    "https://routewise-frontend-fbb3.onrender.com"
+)
+
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173"
+        DEFAULT_CORS_ORIGINS
     ).split(",")
     if origin.strip()
 ]
@@ -140,3 +145,6 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
+
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
