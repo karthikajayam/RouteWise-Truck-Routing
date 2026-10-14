@@ -17,7 +17,7 @@ from django.http import JsonResponse
 
 from django.middleware.csrf import get_token
 
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 
 INDIA_TZ = ZoneInfo("Asia/Kolkata")
 
@@ -1043,6 +1043,7 @@ def fetch_route_candidates(origin_coordinate, destination_coordinate, origin, de
 
 # ---------------- PLAN ROUTE ENDPOINT ----------------
 
+@csrf_exempt
 def plan_route(request):
 
     if request.method != "POST":

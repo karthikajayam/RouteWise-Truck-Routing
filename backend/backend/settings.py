@@ -20,7 +20,7 @@ ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get(
         "ALLOWED_HOSTS",
-        "localhost,127.0.0.1"
+        "localhost,127.0.0.1,routewise-backend-wwro.onrender.com"
     ).split(",")
     if host.strip()
 ]
@@ -119,11 +119,13 @@ STATIC_URL = "static/"
 
 
 # Email
-MAILERS = {
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+""" MAILERS = {
     "default": {
         "BACKEND": "django.core.mail.backends.console.EmailBackend",
     },
-}
+} """
 
 
 # Frontend / backend communication
