@@ -1,4 +1,3 @@
-
 """
 Django settings for backend project.
 """
@@ -145,8 +144,27 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
+CSRF_FAILURE_VIEW = "routing.views.csrf_failure"
 CSRF_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_HTTPONLY = False
-
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
+
+
+# Log CSRF failures to the deployment console
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "routing": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
