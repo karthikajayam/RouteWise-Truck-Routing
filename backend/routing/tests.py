@@ -4,7 +4,10 @@ from .views import (
     get_rain_risk,
     get_snow_risk,
     get_wind_risk,
+<<<<<<< HEAD
     route_score,
+=======
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
 )
 
 
@@ -44,6 +47,7 @@ class RiskThresholdTests(SimpleTestCase):
             places=4,
         )
         self.assertGreater(checkpoints[-1]["segment_miles"], 0)
+<<<<<<< HEAD
 
 
 class RouteRankingTests(SimpleTestCase):
@@ -79,3 +83,5 @@ class RouteRankingTests(SimpleTestCase):
         fast = {"risk_summary": common_summary, "duration_minutes": 200}
         slow = {"risk_summary": common_summary, "duration_minutes": 250}
         self.assertLess(route_score(fast), route_score(slow))
+=======
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960

@@ -419,6 +419,7 @@ def cached_checkpoint_weather(latitude, longitude):
 
     return get_checkpoint_weather(latitude, longitude)
 
+<<<<<<< HEAD
 
 def _nearest_forecast_index(forecast, target_time):
     """Return the index of the forecast hour closest to target_time."""
@@ -476,11 +477,54 @@ def weather_risk_snapshot(forecast, target_time, truck_load_lb):
     temperature = _forecast_value(forecast, "temperature", index)
 
     if wind is None or rain is None or snow_cm is None:
+=======
+def weather_risk_snapshot(forecast, target_time, truck_load_lb):
+
+    """Return weather values and risk for one forecast hour, or None."""
+
+    if not forecast.get("available"):
+
+        return None
+
+    target = target_time.astimezone(INDIA_TZ).strftime("%Y-%m-%dT%H:00")
+
+    try:
+
+        index = forecast.get("time", []).index(target)
+
+    except ValueError:
+
+        return None
+
+    def value(key):
+
+        values = forecast.get(key, [])
+
+        if index >= len(values) or values[index] is None:
+
+            return None
+
+        try:
+
+            return float(values[index])
+
+        except (TypeError, ValueError):
+
+            return None
+
+    wind, rain, snow_cm = value("wind_mph"), value("rain"), value("snowfall")
+
+    temperature = value("temperature")
+
+    if wind is None or rain is None or snow_cm is None:
+
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
         return None
 
     snow_inches = snow_cm / 2.54
 
     wind_risk = get_wind_risk(wind, truck_load_lb)
+<<<<<<< HEAD
     rain_risk = get_rain_risk(rain)
     snow_risk = get_snow_risk(snow_inches)
 
@@ -499,6 +543,35 @@ def weather_risk_snapshot(forecast, target_time, truck_load_lb):
 
 
 
+=======
+
+    rain_risk = get_rain_risk(rain)
+
+    snow_risk = get_snow_risk(snow_inches)
+
+    return {
+
+        "forecast_time": target,
+
+        "temperature_c": temperature,
+
+        "wind_mph": round(wind, 1),
+
+        "rain_inches_per_hour": round(rain, 3),
+
+        "snow_inches_per_hour": round(snow_inches, 3),
+
+        "wind_risk": wind_risk,
+
+        "rain_risk": rain_risk,
+
+        "snow_risk": snow_risk,
+
+        "risk": highest_risk(wind_risk, rain_risk, snow_risk),
+
+    }
+
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
 def get_weather_at_arrival(forecast, arrival):
 
     if not forecast.get("available"):
@@ -885,10 +958,17 @@ def route_score(route):
 
         average_risk,
 
+<<<<<<< HEAD
         route["duration_minutes"],
 
         summary["pending_checkpoints"],
 
+=======
+        summary["pending_checkpoints"],
+
+        route["duration_minutes"],
+
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
     )
 
 # ---------------- HOME ENDPOINT ----------------
@@ -914,9 +994,14 @@ def fetch_route_candidates(origin_coordinate, destination_coordinate, origin, de
     OSRM's public service does not guarantee three routes. This function only
 
     returns road geometries actually returned by OSRM; it never fabricates or
+<<<<<<< HEAD
     clones a route. For generic city pairs, offset waypoints are used to ask
     OSRM for genuinely routed alternatives when its default alternatives are
     insufficient. The public free service can still return fewer than three.
+=======
+
+    clones a route.
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
 
     """
 
@@ -1034,6 +1119,7 @@ def fetch_route_candidates(origin_coordinate, destination_coordinate, origin, de
 
         waypoint_sets = [list(reversed(points)) for points in corridors[reverse_key]]
 
+<<<<<<< HEAD
     # For city pairs without a hand-curated corridor, try real OSRM routes
     # through several offset waypoints near the straight-line midpoint. OSRM
     # snaps each waypoint to its road network; route geometry is always returned
@@ -1067,6 +1153,20 @@ def fetch_route_candidates(origin_coordinate, destination_coordinate, origin, de
         locations = ";".join([origin_coordinate, *waypoints, destination_coordinate])
         add_routes(
             f"{base}{locations}?overview=full&geometries=geojson&steps=false&alternatives=3"
+=======
+    for waypoints in waypoint_sets or []:
+
+        if len(candidates) >= 3:
+
+            break
+
+        locations = ";".join([origin_coordinate, *waypoints, destination_coordinate])
+
+        add_routes(
+
+            f"{base}{locations}?overview=full&geometries=geojson&steps=false"
+
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
         )
 
     return candidates[:3]
@@ -1397,4 +1497,8 @@ def csrf_failure(request, reason=""):
     return JsonResponse(
         {"error": "CSRF verification failed"},
         status=403,
+<<<<<<< HEAD
     )
+=======
+    )
+>>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
