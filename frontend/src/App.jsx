@@ -168,11 +168,7 @@ function App() {
 
         const response = await fetch(
 
-<<<<<<< HEAD
-          "https://api.open-meteo.com/v1/forecast?latitude=13.0827&longitude=80.2707&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,wind_speed_10m,precipitation_probability&forecast_days=2&timezone=Asia%2FKolkata"
-=======
           "https\://api.open-meteo.com/v1/forecast?latitude=13.0827&longitude=80.2707&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,wind_speed_10m,precipitation_probability&forecast_days=2&timezone=Asia%2FKolkata"
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
 
         );
 
@@ -447,18 +443,11 @@ function App() {
 
 
       setAvailableRoutes(returnedRoutes);
-<<<<<<< HEAD
       setForecastHour(0);
 
       // Select the backend's risk-aware recommendation by default.
       const firstRoute =
         returnedRoutes.find((route) => route.recommended) || returnedRoutes[0];
-=======
-
-
-
-      const firstRoute = returnedRoutes[0];
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
 
 
 

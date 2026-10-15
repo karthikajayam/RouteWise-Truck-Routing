@@ -2,12 +2,14 @@ import json
 import logging
 
 import math
-
+from django.middleware.csrf import get_token
 from datetime import datetime, timedelta
 
 from zoneinfo import ZoneInfo
 
 from concurrent.futures import ThreadPoolExecutor
+
+
 
 import requests
 
@@ -15,11 +17,15 @@ from functools import lru_cache
 
 from django.http import JsonResponse
 
-from django.middleware.csrf import get_token
+from django.views.decorators.csrf import ensure_csrf_cookie
 
-from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
+
+
+
 
 INDIA_TZ = ZoneInfo("Asia/Kolkata")
+
+
 
 RISK_SCORE = {
 
@@ -35,7 +41,25 @@ RISK_SCORE = {
 
 }
 
+
+
+
+
+logger = logging.getLogger("routing")
+
+
+def csrf_failure(request, reason=""):
+    """Return a JSON response when Django rejects a CSRF request."""
+    logger.error("CSRF validation failed: %s", reason)
+    return JsonResponse(
+        {"error": "CSRF verification failed. Refresh the page and try again."},
+        status=403,
+    )
+
+
 # ---------------- RISK RULES ----------------
+
+
 
 def get_wind_risk(wind_mph, truck_load_lb):
 
@@ -43,19 +67,31 @@ def get_wind_risk(wind_mph, truck_load_lb):
 
         return "No Travel"
 
+
+
     if wind_mph >= 45:
 
         return "No Travel" if truck_load_lb > 30000 else "Severe"
+
+
 
     if wind_mph >= 35:
 
         return "Severe" if truck_load_lb > 40000 else "High"
 
+
+
     if wind_mph >= 25:
 
         return "Moderate"
 
+
+
     return "Low"
+
+
+
+
 
 def get_rain_risk(rain_inches_per_hour):
 
@@ -76,6 +112,10 @@ def get_rain_risk(rain_inches_per_hour):
         return "Moderate"
 
     return "Low"
+
+
+
+
 
 def get_snow_risk(snow_inches_per_hour):
 
@@ -99,11 +139,21 @@ def get_snow_risk(snow_inches_per_hour):
 
     return "Low"
 
+
+
+
+
 def highest_risk(*risks):
 
     return max(risks, key=lambda risk: RISK_SCORE[risk])
 
+
+
+
+
 # ---------------- DISTANCE ----------------
+
+
 
 def distance_miles(point_a, point_b):
 
@@ -111,15 +161,23 @@ def distance_miles(point_a, point_b):
 
     lon2, lat2 = point_b
 
+
+
     radius = 3958.8
+
+
 
     lat1 = math.radians(lat1)
 
     lat2 = math.radians(lat2)
 
+
+
     delta_lat = lat2 - lat1
 
     delta_lon = math.radians(lon2 - lon1)
+
+
 
     a = (
 
@@ -133,7 +191,11 @@ def distance_miles(point_a, point_b):
 
     )
 
+
+
     a = max(0.0, min(1.0, a))
+
+
 
     return radius * 2 * math.atan2(
 
@@ -142,6 +204,10 @@ def distance_miles(point_a, point_b):
         math.sqrt(1 - a),
 
     )
+
+
+
+
 
 @lru_cache(maxsize=128)
 
@@ -191,7 +257,13 @@ def geocode_location(place_name):
 
         return None
 
+
+
+
+
 # ---------------- CHECKPOINTS ----------------
+
+
 
 def create_checkpoints(route_geometry, interval_miles=25):
 
@@ -199,15 +271,23 @@ def create_checkpoints(route_geometry, interval_miles=25):
 
         raise ValueError("Interval must be 10, 25, or 50 miles")
 
+
+
     if not route_geometry:
 
         return []
 
+
+
     coordinates = route_geometry.get("coordinates", [])
+
+
 
     if len(coordinates) < 2:
 
         return []
+
+
 
     checkpoints = []
 
@@ -215,19 +295,29 @@ def create_checkpoints(route_geometry, interval_miles=25):
 
     next_checkpoint = float(interval_miles)
 
+
+
     for index in range(1, len(coordinates)):
 
         start = coordinates[index - 1]
 
         end = coordinates[index]
 
+
+
         segment_distance = distance_miles(start, end)
+
+
 
         if segment_distance <= 0:
 
             continue
 
+
+
         segment_end = total_distance + segment_distance
+
+
 
         while next_checkpoint <= segment_end:
 
@@ -239,9 +329,13 @@ def create_checkpoints(route_geometry, interval_miles=25):
 
             )
 
+
+
             longitude = start[0] + fraction * (end[0] - start[0])
 
             latitude = start[1] + fraction * (end[1] - start[1])
+
+
 
             checkpoints.append({
 
@@ -265,9 +359,15 @@ def create_checkpoints(route_geometry, interval_miles=25):
 
             })
 
+
+
             next_checkpoint += interval_miles
 
+
+
         total_distance = segment_end
+
+
 
     # Add the actual destination as a final checkpoint so the last partial
 
@@ -305,6 +405,8 @@ def create_checkpoints(route_geometry, interval_miles=25):
 
         })
 
+
+
     # Each regular checkpoint covers the interval immediately before it.
 
     previous_distance = 0.0
@@ -321,13 +423,23 @@ def create_checkpoints(route_geometry, interval_miles=25):
 
         previous_distance = checkpoint["distance_miles"]
 
+
+
     return checkpoints
 
+
+
+
+
 # ---------------- WEATHER API ----------------
+
+
 
 def get_checkpoint_weather(latitude, longitude):
 
     url = "https://api.open-meteo.com/v1/forecast"
+
+
 
     params = {
 
@@ -359,6 +471,8 @@ def get_checkpoint_weather(latitude, longitude):
 
     }
 
+
+
     try:
 
         response = requests.get(
@@ -373,7 +487,11 @@ def get_checkpoint_weather(latitude, longitude):
 
         response.raise_for_status()
 
+
+
         hourly = response.json().get("hourly", {})
+
+
 
         if not hourly.get("time"):
 
@@ -384,6 +502,8 @@ def get_checkpoint_weather(latitude, longitude):
                 "error": "Weather forecast unavailable",
 
             }
+
+
 
         return {
 
@@ -403,6 +523,8 @@ def get_checkpoint_weather(latitude, longitude):
 
         }
 
+
+
     except (requests.RequestException, ValueError):
 
         return {
@@ -419,65 +541,8 @@ def cached_checkpoint_weather(latitude, longitude):
 
     return get_checkpoint_weather(latitude, longitude)
 
-<<<<<<< HEAD
-
-def _nearest_forecast_index(forecast, target_time):
-    """Return the index of the forecast hour closest to target_time."""
-    times = forecast.get("time", [])
-    if not times:
-        return None
-
-    try:
-        target_local = target_time.astimezone(INDIA_TZ).replace(
-            minute=0, second=0, microsecond=0, tzinfo=None
-        )
-        parsed_times = []
-        for index, value in enumerate(times):
-            try:
-                parsed_times.append((index, datetime.fromisoformat(value)))
-            except (TypeError, ValueError):
-                continue
-
-        if not parsed_times:
-            return None
-
-        return min(
-            parsed_times,
-            key=lambda item: abs((item[1] - target_local).total_seconds()),
-        )[0]
-    except (TypeError, ValueError, OverflowError):
-        return None
 
 
-def _forecast_value(forecast, key, index):
-    """Safely read a numeric value from an hourly forecast array."""
-    values = forecast.get(key, [])
-    if index < 0 or index >= len(values) or values[index] is None:
-        return None
-
-    try:
-        value = float(values[index])
-        return value if math.isfinite(value) else None
-    except (ValueError, TypeError):
-        return None
-
-
-def weather_risk_snapshot(forecast, target_time, truck_load_lb):
-    """Return real weather values and risk for the selected forecast hour."""
-    if not forecast.get("available"):
-        return None
-
-    index = _nearest_forecast_index(forecast, target_time)
-    if index is None:
-        return None
-
-    wind = _forecast_value(forecast, "wind_mph", index)
-    rain = _forecast_value(forecast, "rain", index)
-    snow_cm = _forecast_value(forecast, "snowfall", index)
-    temperature = _forecast_value(forecast, "temperature", index)
-
-    if wind is None or rain is None or snow_cm is None:
-=======
 def weather_risk_snapshot(forecast, target_time, truck_load_lb):
 
     """Return weather values and risk for one forecast hour, or None."""
@@ -496,6 +561,8 @@ def weather_risk_snapshot(forecast, target_time, truck_load_lb):
 
         return None
 
+
+
     def value(key):
 
         values = forecast.get(key, [])
@@ -512,44 +579,27 @@ def weather_risk_snapshot(forecast, target_time, truck_load_lb):
 
             return None
 
+
+
     wind, rain, snow_cm = value("wind_mph"), value("rain"), value("snowfall")
 
     temperature = value("temperature")
 
     if wind is None or rain is None or snow_cm is None:
 
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
         return None
 
     snow_inches = snow_cm / 2.54
 
     wind_risk = get_wind_risk(wind, truck_load_lb)
-<<<<<<< HEAD
+
     rain_risk = get_rain_risk(rain)
+
     snow_risk = get_snow_risk(snow_inches)
 
     return {
+
         "available": True,
-        "forecast_time": forecast["time"][index],
-        "temperature_c": temperature,
-        "wind_mph": round(wind, 1),
-        "rain_inches_per_hour": round(rain, 3),
-        "snow_inches_per_hour": round(snow_inches, 3),
-        "wind_risk": wind_risk,
-        "rain_risk": rain_risk,
-        "snow_risk": snow_risk,
-        "risk": highest_risk(wind_risk, rain_risk, snow_risk),
-    }
-
-
-
-=======
-
-    rain_risk = get_rain_risk(rain)
-
-    snow_risk = get_snow_risk(snow_inches)
-
-    return {
 
         "forecast_time": target,
 
@@ -571,12 +621,17 @@ def weather_risk_snapshot(forecast, target_time, truck_load_lb):
 
     }
 
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
+
+
+
+
 def get_weather_at_arrival(forecast, arrival):
 
     if not forecast.get("available"):
 
         return None
+
+
 
     target_time = arrival.astimezone(INDIA_TZ).strftime(
 
@@ -584,7 +639,11 @@ def get_weather_at_arrival(forecast, arrival):
 
     )
 
+
+
     times = forecast.get("time", [])
+
+
 
     try:
 
@@ -594,13 +653,19 @@ def get_weather_at_arrival(forecast, arrival):
 
         return None
 
+
+
     def get_value(key):
 
         values = forecast.get(key, [])
 
+
+
         if index >= len(values) or values[index] is None:
 
             return None
+
+
 
         try:
 
@@ -610,6 +675,8 @@ def get_weather_at_arrival(forecast, arrival):
 
             return None
 
+
+
     temperature = get_value("temperature")
 
     wind = get_value("wind_mph")
@@ -618,9 +685,13 @@ def get_weather_at_arrival(forecast, arrival):
 
     snowfall = get_value("snowfall")
 
+
+
     if wind is None or rain is None or snowfall is None:
 
         return None
+
+
 
     return {
 
@@ -636,7 +707,13 @@ def get_weather_at_arrival(forecast, arrival):
 
     }
 
+
+
+
+
 # ---------------- PARALLEL WEATHER EVALUATION ----------------
+
+
 
 def evaluate_checkpoints(
 
@@ -654,11 +731,17 @@ def evaluate_checkpoints(
 
     route_miles = route_distance_km / 1.609344
 
+
+
     if route_miles <= 0 or not checkpoints:
 
         return checkpoints
 
+
+
     jobs = []
+
+
 
     for checkpoint in checkpoints:
 
@@ -670,17 +753,25 @@ def evaluate_checkpoints(
 
         )
 
+
+
         arrival = departure + timedelta(
 
             minutes=duration_minutes * progress
 
         )
 
+
+
         checkpoint["estimated_arrival"] = arrival.isoformat()
+
+
 
         latitude = checkpoint["coordinates"]["latitude"]
 
         longitude = checkpoint["coordinates"]["longitude"]
+
+
 
         jobs.append({
 
@@ -702,7 +793,11 @@ def evaluate_checkpoints(
 
         })
 
+
+
     unique_locations = {}
+
+
 
     for job in jobs:
 
@@ -714,7 +809,11 @@ def evaluate_checkpoints(
 
         )
 
+
+
     weather_cache = {}
+
+
 
     # Fetch weather from different locations concurrently.
 
@@ -738,6 +837,8 @@ def evaluate_checkpoints(
 
         }
 
+
+
         for key, future in futures.items():
 
             try:
@@ -754,11 +855,15 @@ def evaluate_checkpoints(
 
                 }
 
+
+
     # Calculate risk for each checkpoint.
 
     for job in jobs:
 
         checkpoint = job["checkpoint"]
+
+
 
         location_forecast = weather_cache[job["cache_key"]]
 
@@ -769,6 +874,8 @@ def evaluate_checkpoints(
             job["arrival"],
 
         )
+
+
 
         # The map slider uses a real hourly forecast at each checkpoint.
 
@@ -796,6 +903,8 @@ def evaluate_checkpoints(
 
         checkpoint["forecast_by_hour"] = forecast_by_hour
 
+
+
         if weather is None:
 
             checkpoint["risk"] = "Pending"
@@ -810,6 +919,8 @@ def evaluate_checkpoints(
 
             continue
 
+
+
         wind_risk = get_wind_risk(
 
             weather["wind_mph"],
@@ -818,17 +929,23 @@ def evaluate_checkpoints(
 
         )
 
+
+
         rain_risk = get_rain_risk(
 
             weather["rain_inches_per_hour"]
 
         )
 
+
+
         snow_risk = get_snow_risk(
 
             weather["snow_inches_per_hour"]
 
         )
+
+
 
         checkpoint["weather"] = {
 
@@ -844,6 +961,8 @@ def evaluate_checkpoints(
 
         }
 
+
+
         checkpoint["risk"] = highest_risk(
 
             wind_risk,
@@ -854,13 +973,23 @@ def evaluate_checkpoints(
 
         )
 
+
+
     return checkpoints
 
+
+
+
+
 # ---------------- ROUTE SUMMARY ----------------
+
+
 
 def summarize_route(route):
 
     interval = route["checkpoint_interval_miles"]
+
+
 
     severe_miles = 0.0
 
@@ -870,9 +999,13 @@ def summarize_route(route):
 
     pending = 0
 
+
+
     for checkpoint in route["checkpoints"]:
 
         risk = checkpoint["risk"]
+
+
 
         if risk == "Pending":
 
@@ -880,7 +1013,11 @@ def summarize_route(route):
 
             continue
 
+
+
         scores.append(RISK_SCORE[risk])
+
+
 
         checkpoint_miles = float(checkpoint.get("segment_miles", interval))
 
@@ -891,6 +1028,8 @@ def summarize_route(route):
         elif risk == "High":
 
             high_miles += checkpoint_miles
+
+
 
     route["risk_summary"] = {
 
@@ -920,6 +1059,8 @@ def summarize_route(route):
 
     }
 
+
+
     known_risks = [
 
         item["risk"]
@@ -930,6 +1071,8 @@ def summarize_route(route):
 
     ]
 
+
+
     route["risk"] = (
 
         max(known_risks, key=lambda risk: RISK_SCORE[risk])
@@ -938,17 +1081,29 @@ def summarize_route(route):
 
     )
 
+
+
     return route
+
+
+
+
 
 def route_score(route):
 
     summary = route["risk_summary"]
 
+
+
     average_risk = summary["average_risk_score"]
+
+
 
     if average_risk is None:
 
         average_risk = float("inf")
+
+
 
     return (
 
@@ -958,222 +1113,127 @@ def route_score(route):
 
         average_risk,
 
-<<<<<<< HEAD
-        route["duration_minutes"],
-
-        summary["pending_checkpoints"],
-
-=======
         summary["pending_checkpoints"],
 
         route["duration_minutes"],
 
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
     )
+
+
+
+
 
 # ---------------- HOME ENDPOINT ----------------
 
+
+
+
 @ensure_csrf_cookie
-
 def home(request):
-
     return JsonResponse({
-
         "message": "Truck Routing API is working!",
-
         "csrfToken": get_token(request),
-
     })
+
+
+
+
+
 
 # ---------------- ROUTE CANDIDATES ----------------
 
-def fetch_route_candidates(origin_coordinate, destination_coordinate, origin, destination):
 
+
+def fetch_route_candidates(origin_coordinate, destination_coordinate, origin, destination):
     """Fetch real OSRM routes, try known alternate corridors, and reject duplicates.
 
     OSRM's public service does not guarantee three routes. This function only
-
     returns road geometries actually returned by OSRM; it never fabricates or
-<<<<<<< HEAD
-    clones a route. For generic city pairs, offset waypoints are used to ask
-    OSRM for genuinely routed alternatives when its default alternatives are
-    insufficient. The public free service can still return fewer than three.
-=======
-
     clones a route.
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
-
     """
-
     base = "https://router.project-osrm.org/route/v1/driving/"
-
     candidates = []
-
     signatures = set()
 
     def add_routes(url):
-
         try:
-
             response = requests.get(url, timeout=15)
-
             response.raise_for_status()
-
             payload = response.json()
-
         except (requests.RequestException, ValueError, TypeError):
-
             return
 
         if payload.get("code") != "Ok":
-
             return
 
         for route in payload.get("routes", []):
-
             geometry = route.get("geometry") or {}
-
             coordinates = geometry.get("coordinates") or []
-
             if len(coordinates) < 2:
-
                 continue
 
             # Sample a fixed number of positions so identical geometry is
-
             # detected even when the API returns a different number of points.
-
             last = len(coordinates) - 1
-
             sample_indices = sorted({round(i * last / 40) for i in range(41)})
-
             signature = tuple(
-
                 (round(coordinates[i][0], 3), round(coordinates[i][1], 3))
-
                 for i in sample_indices
-
             )
-
             if signature in signatures:
-
                 continue
 
             signatures.add(signature)
-
             candidates.append(route)
 
     add_routes(
-
         f"{base}{origin_coordinate};{destination_coordinate}"
-
         "?alternatives=3&overview=full&geometries=geojson"
-
     )
 
     origin_key = origin.strip().casefold()
-
     destination_key = destination.strip().casefold()
 
     # Waypoints are longitude,latitude and are used only for the corridors
-
     # listed below. Other trips use the alternatives supplied by OSRM.
-
     corridors = {
-
         ("coimbatore", "chennai"): [
-
             ["77.7172,11.3410", "78.1460,11.6643", "79.4861,11.9401"],
-
             ["78.0767,10.9601", "78.7047,10.7905", "79.4861,11.9401"],
-
             ["77.7172,11.3410", "78.7047,10.7905", "79.4861,11.9401"],
-
         ],
-
         ("chennai", "bengaluru"): [
-
             ["79.1325,12.9165", "78.2138,12.5186"],
-
             ["79.0747,12.2253", "78.1582,12.1277", "77.8253,12.7409"],
-
             ["79.5310,12.6810", "78.4867,12.3051", "77.8253,12.7409"],
-
         ],
-
     }
 
     def canonical_place(value):
-
         value = value.strip().casefold()
-
         return {"bangalore": "bengaluru", "coimbatore city": "coimbatore"}.get(value, value)
 
     key = (canonical_place(origin_key), canonical_place(destination_key))
-
     reverse_key = (key[1], key[0])
-
     waypoint_sets = corridors.get(key)
-
     if waypoint_sets is None and reverse_key in corridors:
-
         waypoint_sets = [list(reversed(points)) for points in corridors[reverse_key]]
 
-<<<<<<< HEAD
-    # For city pairs without a hand-curated corridor, try real OSRM routes
-    # through several offset waypoints near the straight-line midpoint. OSRM
-    # snaps each waypoint to its road network; route geometry is always returned
-    # by the routing API (we never draw synthetic route lines).
-    if waypoint_sets is None:
-        try:
-            origin_lon, origin_lat = map(float, origin_coordinate.split(","))
-            destination_lon, destination_lat = map(float, destination_coordinate.split(","))
-            delta_lon = destination_lon - origin_lon
-            delta_lat = destination_lat - origin_lat
-            magnitude = math.hypot(delta_lon, delta_lat) or 1.0
-            perpendicular_lon = -delta_lat / magnitude
-            perpendicular_lat = delta_lon / magnitude
-            waypoint_sets = []
-            for fraction, offset in (
-                (0.45, 0.16),
-                (0.55, -0.16),
-                (0.38, 0.25),
-                (0.62, -0.25),
-                (0.50, 0.32),
-            ):
-                waypoint_lon = origin_lon + delta_lon * fraction + perpendicular_lon * offset
-                waypoint_lat = origin_lat + delta_lat * fraction + perpendicular_lat * offset
-                waypoint_sets.append([f"{waypoint_lon:.5f},{waypoint_lat:.5f}"])
-        except (TypeError, ValueError):
-            waypoint_sets = []
-
-    for waypoints in waypoint_sets:
-        if len(candidates) >= 3:
-            break
-        locations = ";".join([origin_coordinate, *waypoints, destination_coordinate])
-        add_routes(
-            f"{base}{locations}?overview=full&geometries=geojson&steps=false&alternatives=3"
-=======
     for waypoints in waypoint_sets or []:
-
         if len(candidates) >= 3:
-
             break
-
         locations = ";".join([origin_coordinate, *waypoints, destination_coordinate])
-
         add_routes(
-
             f"{base}{locations}?overview=full&geometries=geojson&steps=false"
-
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
         )
 
     return candidates[:3]
 
+
 # ---------------- PLAN ROUTE ENDPOINT ----------------
 
-@csrf_exempt
+
+
 def plan_route(request):
 
     if request.method != "POST":
@@ -1185,6 +1245,8 @@ def plan_route(request):
             status=405,
 
         )
+
+
 
     try:
 
@@ -1200,9 +1262,13 @@ def plan_route(request):
 
         )
 
+
+
     origin = data.get("origin", "")
 
     destination = data.get("destination", "")
+
+
 
     if not isinstance(origin, str) or not isinstance(destination, str):
 
@@ -1214,9 +1280,13 @@ def plan_route(request):
 
         )
 
+
+
     origin = origin.strip()
 
     destination = destination.strip()
+
+
 
     if not origin or not destination or origin == destination:
 
@@ -1228,15 +1298,21 @@ def plan_route(request):
 
         )
 
+
+
     # Frontend already sends truck load in pounds.
 
     try:
 
         truck_load_lb = float(data.get("truckLoad", ""))
 
+
+
         if not math.isfinite(truck_load_lb) or truck_load_lb <= 0:
 
             raise ValueError
+
+
 
     except (ValueError, TypeError):
 
@@ -1247,6 +1323,8 @@ def plan_route(request):
             status=400,
 
         )
+
+
 
     try:
 
@@ -1262,6 +1340,8 @@ def plan_route(request):
 
         )
 
+
+
     if interval_miles not in (10, 25, 50):
 
         return JsonResponse(
@@ -1271,6 +1351,8 @@ def plan_route(request):
             status=400,
 
         )
+
+
 
     # Resolve user-entered locations instead of restricting the planner to two cities.
 
@@ -1288,6 +1370,8 @@ def plan_route(request):
 
         )
 
+
+
     departure_date = data.get("departureDate")
 
     departure_time = data.get(
@@ -1297,6 +1381,8 @@ def plan_route(request):
         data.get("departure", "08:00"),
 
     )
+
+
 
     try:
 
@@ -1311,6 +1397,8 @@ def plan_route(request):
         else:
 
             now = datetime.now(INDIA_TZ)
+
+
 
             departure = datetime.combine(
 
@@ -1328,9 +1416,13 @@ def plan_route(request):
 
             )
 
+
+
             if departure < now:
 
                 departure += timedelta(days=1)
+
+
 
     except (ValueError, TypeError):
 
@@ -1341,6 +1433,8 @@ def plan_route(request):
             status=400,
 
         )
+
+
 
     route_candidates = fetch_route_candidates(
 
@@ -1354,6 +1448,8 @@ def plan_route(request):
 
     )
 
+
+
     if not route_candidates:
 
         return JsonResponse(
@@ -1364,6 +1460,8 @@ def plan_route(request):
 
         )
 
+
+
     formatted_routes = []
 
     for index, route in enumerate(route_candidates):
@@ -1372,6 +1470,8 @@ def plan_route(request):
 
         duration_minutes = round(route["duration"] / 60)
 
+
+
         checkpoints = create_checkpoints(
 
             route.get("geometry"),
@@ -1379,6 +1479,8 @@ def plan_route(request):
             interval_miles,
 
         )
+
+
 
         checkpoints = evaluate_checkpoints(
 
@@ -1393,6 +1495,8 @@ def plan_route(request):
             truck_load_lb,
 
         )
+
+
 
         formatted_route = {
 
@@ -1424,11 +1528,15 @@ def plan_route(request):
 
         }
 
+
+
         formatted_routes.append(
 
             summarize_route(formatted_route)
 
         )
+
+
 
     recommended_route = min(
 
@@ -1438,6 +1546,8 @@ def plan_route(request):
 
     )
 
+
+
     for route in formatted_routes:
 
         route["recommended"] = (
@@ -1445,6 +1555,8 @@ def plan_route(request):
             route["id"] == recommended_route["id"]
 
         )
+
+
 
     return JsonResponse({
 
@@ -1483,22 +1595,3 @@ def plan_route(request):
         "route_coordinates": recommended_route["route_coordinates"],
 
     })
-
-
-logger = logging.getLogger(__name__)
-
-def csrf_failure(request, reason=""):
-    logger.error(
-        "CSRF FAILURE: %s | Origin: %s | Referer: %s",
-        reason,
-        request.META.get("HTTP_ORIGIN"),
-        request.META.get("HTTP_REFERER"),
-    )
-    return JsonResponse(
-        {"error": "CSRF verification failed"},
-        status=403,
-<<<<<<< HEAD
-    )
-=======
-    )
->>>>>>> be179cc2bdee70f1f07d02a6517465236159e960
